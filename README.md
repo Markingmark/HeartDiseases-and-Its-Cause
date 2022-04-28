@@ -1,6 +1,7 @@
 # HeartDiseases-and-Its-Cause
 
 Abstract:
+
 This article is based on the 2020 CDC (Center of Disease Control) [@datasite] health survey data of 400k adults, the source of which is the Behavioral Risk Factor Surveillance System (BRFSS), as part of the health questionnaire for American residents. This paper is done in R using R code[@Rcode] and produced with [@repro]. The purpose of this paper is to intercept the relevant causes of heart disease and related influencing factors in the survey data, to conduct data sorting, classification, and modeling analysis, to analyze the main causes of acquired heart disease, and to establish a system that can be used to predict individual Statistical models of heart disease risk.
 
 
