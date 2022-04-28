@@ -1,0 +1,235 @@
+---
+title: "What Causes Heart Diseases in Modern Life and the Model to Predict it"
+subtitle: "A Data Analysis Project Based on CDC Health Data, 2020"
+author: "Yichen Duo"
+date: 2022-04-06
+lang: "en"
+output:
+  pdf_document:
+    template: report.tex
+    toc: true
+    toc_depth: 2
+titlepage: "true"
+titlepage-color: "000080"
+titlepage-textcolor: "FFFFFF"
+titlepage-rulecolor: "FFFFFF"
+titlepage-rule-height: 2
+bibliography: ref_list.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Abstract
+
+This article is based on the 2020 CDC (Center of Disease Control) [@datasite] health survey data of 400k adults, the source of which is the Behavioral Risk Factor Surveillance System (BRFSS), as part of the health questionnaire for American residents. This paper is done in R using R code[@Rcode] and produced with [@repro]. The purpose of this paper is to intercept the relevant causes of heart disease and related influencing factors in the survey data, to conduct data sorting, classification, and modeling analysis, to analyze the main causes of acquired heart disease, and to establish a system that can be used to predict individual Statistical models of heart disease risk.
+
+\newpage
+## Introduction
+
+Heart disease is a general term for cardiovascular diseases, which itself includes related diseases with multiple sub-categories, such as cardiovascular diseases, myocardial diseases and so on. In this paper, we do not make specific distinctions and studies on each sub-category of heart disease, but generally take macroscopic heart disease as the research object. According to the research report of CDC, heart disease is the main pathological cause of death in many races, and its onset is extremely sudden and fatal. However, apart from congenital and hereditary heart disease, acquired lifestyle habits (such as smoking, drinking) are the main causes of heart disease. Based on this fact, after we have enough data and complete the relevant modeling, we can use to collect the acquired lifestyle habits of the individual and establish a personal profile, analyze, and deduce whether the individual is under the threat of heart disease. And this is the main research purpose of this paper.
+
+This article contains multiple sections. After this Introduction is the Data section, which introduces the data itself and performs EDA analysis. After that, based on the results of the EDA analysis, this article will start modeling and model screening through Residual Analysis Plots, the model used in this article is GLM (Generalized Linear Model); the following Results section will integrate the previous research and analysis process to obtain the research results, and discuss in detail the practical significance of this article and the possible defects in the Discussion section.
+
+Specifically, preliminary analysis of CDC-related data shows that the causes of acquired heart disease are related to a variety of influencing factors, and the most obvious ones are age, BMI, other related diseases, and so on. Interestingly, we found that heart disease rates did not differ significantly between genders, and mental health status did not significantly affect heart attack.
+
+All the researches and analysis done in this paper are reproducible; Codes and Data can be found at Github. ^[https://github.com/Markingmark/HeartDiseases-and-Its-Cause.git]
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(readr)
+heart_2020_cleaned <- read_csv("heart_2020_cleaned.csv")
+cleaned_data <- heart_2020_cleaned %>% filter(!is.na(HeartDisease), !is.na(AgeCategory), AgeCategory != '80 or older') |> mutate(Diabetic = str_replace(Diabetic,"No, borderline diabetes","No")) |> mutate(Diabetic = str_replace(Diabetic,"Yes (during pregnancy)","Yes"))
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "18-24"] <- 21
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "25-29"] <- 27
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "30-34"] <- 32
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "35-39"] <- 37
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "40-44"] <- 42
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "45-49"] <- 47
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "50-54"] <- 52
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "55-59"] <- 57
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "60-64"] <- 62
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "65-69"] <- 67
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "70-74"] <- 72
+cleaned_data$AgeMid[cleaned_data$AgeCategory == "75-79"] <- 77
+
+
+```
+
+\newpage
+## Data and EDA
+
+This data comes from the 2020 US CDC health questionnaire data on 400k adults[@datasite], The dataset contains 18 variables (9 booleans, 5 strings and 4 decimals). The data itself is intercepted from the Behavioral Risk Factor Surveillance System (BRFSS), after being sorted by CDC chosen as the research direction of this paper. The data is read and simulated by using [@Readr] and [@tidy]
+
+The core variables included in the data are:
+HeartDisease: Whether there is heart disease, we use 1/0 as the difference between yes/no in data processing
+BMI: Body Mass Index
+Smoking: whether to smoke
+AlcoholDrinking: Whether to drink alcohol
+Stroke: Have you ever had a stroke?
+PhysicalHealth: Number of days with health problems in the past 30 days
+MentalHealth: Number of days with mental health problems in the past thirty days
+DiffWalking: Is there a walking disorder
+Sex: Gender
+AgeCategory: age group
+
+The following charts show the status of various variables in the data grouped by age. We can intuitively see that with increasing age, the amount of physical activity of individuals decreases significantly; the incidence of stroke, diabetes and other diseases increases significantly. Individuals also face higher difficulty walking as they age. At the same time, the incidence of heart disease is also positively correlated with age.
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+summary_table <- cleaned_data %>% group_by(AgeCategory) %>% summarise(PhysActive = mean(PhysicalActivity=='Yes'),HeartDisease = mean(HeartDisease=="Yes"),Diabetes = mean(Diabetic=="Yes"),Stroke = mean(Stroke == "Yes"), DiffWalk = mean(DiffWalking=="Yes"),Asthma = mean(Asthma == "Yes"),KidneyDisease = mean(KidneyDisease =="Yes"), SkinCancer = mean(SkinCancer =="Yes"))
+
+kable(x = summary_table, 
+      col.names = c("Age", "PhysActive","HeartDisease","Diabetes","Stroke","DiffWalk","Asthma","KidneyDisease","SkinCancer"),
+      caption = "Situation of different Age Group") %>%kable_classic(full_width = FALSE, html_font = "Cambria", font_size=8)
+```
+Next, we will perform a visual analysis of some data in the database to draw preliminary EDA analysis conclusions to assist the subsequent modeling process.
+
+\newpage
+This graph provides a concise analysis of whether average daily sleep time is associated with heart disease by visualizing two variables, sleep time and heart disease count. As shown in the figure, the average daily sleep time of most people is mainly distributed in 7-8 hours a day, which is in line with our common sense of life. However, the changes in the graph suggest that the incidence of heart disease does not have a prominent linear relationship with sleep duration.
+
+Although the rate of heart disease was relatively higher among those who slept less, those who slept around 5 hours a day were about twice as likely to have a heart attack as those who slept 8 hours a day, and this trend can also be seen Explain with other living habits. But we can't ignore the fact that this trend does exist, so later in the modeling process, we need to be mindful of this fact and consider adding average daily sleep time to the model.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE} 
+cleaned_data |> ggplot(aes(x = SleepTime,fill = HeartDisease)) + geom_histogram(binwidth = 1) + theme_classic()+labs(title = "Figure 1: Histogram of Sleeptime vs Heart Disease")
+```
+\newpage
+Indigenous succinctly visualized the link between alcohol consumption and heart disease. The vertical axis of this graph is the Categorical Variable of drinking or not, and the horizontal axis is the number of respondents. Even though the infrequent drinkers are much larger than the regular drinkers, we can still tell from the graph that the frequent drinkers have about 1.5 times the risk of heart disease than the rest of the population.
+
+This huge difference follows the medical common sense in reality-drinking easily induces cardiovascular diseases. Based on the above facts, we will also take frequent drinking as an important influencing factor into the next model construction.
+
+```{r ,fig.width=6,fig.height=2,echo=FALSE, warning=FALSE, message=FALSE}
+cleaned_data |> ggplot(aes(y=AlcoholDrinking,fill=HeartDisease))+geom_bar()+theme_classic()+geom_text(stat = 'count',aes(label = ..count..,hjust =-0.3))+labs(title = "Figure 2: AlchohoDrinking and HeartDisease")
+```
+
+The following graph (Figure 3) visualize the differences between male and female, grouping by their numbers of acquiring Heart Disease. The vertical bar shows the two different genders and if having heart disease or not is shown in the bar within the plot.
+As the graph shows, male has a much higher possibility of getting heart disease than females. The differences is about twice of the possibility
+
+```{r ,fig.width=6,fig.height=2,echo=FALSE, warning=FALSE, message=FALSE}
+cleaned_data |> ggplot(aes(y=Sex, fill=HeartDisease))+geom_bar()+theme_classic()+geom_text(stat = 'count',aes(label = ..count..,hjust = -0.3))+labs(title = "Figure 3: Genders and HeartDisease")
+```
+
+
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+cleaned_data |> ggplot(aes(x=BMI,y=Sex))+geom_boxplot() + theme_classic()
+```
+
+
+\newpage
+## Model
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(rms)
+library(glmnet)
+
+modeldata <- cleaned_data %>% filter(!is.na(BMI),!is.na(Smoking),!is.na(AlcoholDrinking),!is.na(Stroke),!is.na(PhysicalActivity),!is.na(MentalHealth),!is.na(DiffWalking),!is.na(Sex),!is.na(Diabetic),!is.na(AgeMid),!is.na(SleepTime),!is.na(Asthma),!is.na(KidneyDisease),!is.na(SkinCancer)) 
+  
+modeldata$ID <- seq.int(nrow(modeldata))
+
+modeldata$Heart[modeldata$HeartDisease == "Yes"]<-1
+modeldata$Heart[modeldata$HeartDisease == "No"]<-0
+
+nrow(modeldata)
+set.seed(515)
+
+
+
+train <- modeldata[sample(seq_len(nrow(modeldata)),size = 10000),]
+test <- modeldata[!modeldata$ID %in% train$ID,]
+
+nrow(train)
+nrow(test)
+
+```
+
+After data visualization and EDA, model construction in continued. The model is constructed with the help of:[@modelhelp] and [@glmnet]
+Based on the EDA and empirical analysis we first conclude the model as:
+
+glm(Heart ~ BMI + Smoking + AlcoholDrinking + Stroke + PhysicalActivity +DiffWalking + Sex + Diabetic + AgeMid + SleepTime+ Asthma+ KidneyDisease + SkinCancer,family = binomial, data = train)
+
+A GLM model is selected for this research as it would be easily trained and used for prediction purposes. GLM model is considerably outstanding for dealing with categorical predictors, thus it is prefect in such research purposes.
+The relative data about this first built model is listed below.
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+model_1 <- glm(Heart ~ BMI + Smoking + AlcoholDrinking + Stroke + PhysicalActivity +DiffWalking + Sex + Diabetic + AgeMid + SleepTime+ Asthma+ KidneyDisease + SkinCancer,family = binomial, data = train)
+
+vif(model_1)
+```
+\newpage
+Backward selection is then utilized by checking the AIC of model 1, listed below.
+
+As AIC=4273.73
+Comparing the AIC and deviance from predicting factors lead to the elimination of predictor:SkinCancer as it shows little correlation to the acquiring of heart disease. 
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+model_1.1 <- step(model_1, direction="back")
+```
+\newpage
+Model 1.2 is then generated after the variable selection process.
+
+Which is generated as: 
+BMI + Smoking + AlcoholDrinking + Stroke + PhysicalActivity+DiffWalking + Sex + Diabetic + AgeMid + SleepTime+ Asthma+ KidneyDisease
+
+The model's residual analytic plots are listed below. By looking at the residual analytic plots, Residual vs Fitted plots, Scale-location, and Residual vs leverage plots show no visible linear relationship between the variables, while the Normal Q-Q plot are fitted around the based line of the plot. Although the Normal Q-Q plot trends hardly prefectly, GLM model fitting is still valid considering the nature of such model.
+
+In general, the model 1.2 fitted here is considered validate and appropriate for the research purposes. As shown below in the model summary section, most variables concluded in the model are with high signficances.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+model_1.2 <- glm(Heart ~ BMI + Smoking + AlcoholDrinking + Stroke + PhysicalActivity+DiffWalking + Sex + Diabetic + AgeMid + SleepTime+ Asthma+ KidneyDisease, family = binomial, data = train)
+
+par(mfrow = c(2,2))
+plot(model_1.2)
+```
+
+
+\newpage
+## Result
+The model built in this section is completed and can be used combining with the EDA sections before for conclusion purposes. Variables in this model are most considered high significance based on its summary table. Considering the residual analysis plots we investigated earlier, the model can be used to predict if an individual is facing high risk of heart disease, based on one’s personal portrait from both medical and non-medical conditions.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+summary(model_1.2)
+```
+Several conclusions can be drawn from the research. People with larger age faces higher risks of heart disease. Which is visualized and shown below in the graph. Thus, it is imperative for society to allocate more resources to pay attention to the physical health of the elderly.
+
+```{r ,fig.width=6, fig.height=2, echo=FALSE, warning=FALSE, message=FALSE}
+cleaned_data |> ggplot(aes(y=AgeCategory, fill=HeartDisease))+geom_bar()+theme_classic()+geom_text(stat = 'count', aes(label = ..count..,hjust=0))
+```
+
+On the other hand, bad lifestyles and habits leads to a significant increase of the chance of getting heart diseases. Habits include Heaving drinking, smoking, staying up late, etc. General those habits would lead to an increase of around 150%-200% of the possibilities of getting heart diseases, despising other influencing factors. Generally, it is very important to avoid bad living habits, and keep sleeping time over 7 hours is very effective at reducing the possibility of acquiring heart disease.
+
+\newpage
+## Discussion
+
+Based on the personal health survey data of CDC in 2020, this paper conducts a detailed data analysis and visualization process and establishes a GLM model for data prediction and analysis. Specifically, this paper further confirms the medical factors and living habits that induce heart disease, and confirms that habits including smoking, drinking, and staying up late have an inducing effect on heart disease. The findings in this article can therefore serve as a reference for public health reports. On the other hand, this paper also confirms the vulnerability of seniors, especially senior males, of getting heart diseases. It should raise the society’s attention to allocate resources to respond to this fact. 
+
+The model build within this paper can be used as a prediction tool of if one is facing high risk of heart diseases. By loading the relative and required personal information within the model, a result of 1/0, which stands for yes/no should be returned to stat if the stated risks are at large.
+
+While the study is based on the data from CDC, the data itself should be considered at high accuracy and reliability. Thus, study based on such data should be considered reliable. While not only re-confirms the medically proven correlated factors of causing heart diseases, but this study also rules out some of the rumored factors that may cause heart diseases, such as mental status. It is shown that one’s mental status has no significant impact on the chances of getting heart diseases.
+
+However, certain limitations do apply to this study. First, the study in done in R-Markdown with 1GB of RAM, resulting in a limited computing capability and restrained the data selection to train the model to 10000/200000+. The losing of enormous amount of data may lead to the invalidation of model, if more study is done in future. On the other hand, certain factors in the used dataset may have hidden correlation with each other, like Age and DiffWalk, BMI and Diabetes, etc. Some graphs to show the correlation effects between factors and more are listed in the Appendix section below.
+
+\newpage
+## Appendix
+
+The Following boxplots show the relationship between BMI and general health. General health is reduced as BMI increases.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+cleaned_data |> ggplot(aes(x=BMI, Y=GenHealth)) + geom_boxplot() + theme_classic()
+```
+\newpage
+The following plots show that Physical Activity can reduce the possibility of getting heart disease greatly.
+```{r ,fig.width=6, fig.height=2, echo=FALSE, warning=FALSE, message=FALSE}
+cleaned_data |> ggplot(aes(y=PhysicalActivity, fill=HeartDisease))+geom_bar()+theme_classic()+geom_text(stat = 'count', aes(label = ..count..,hjust=0))
+```
+
+The following graph shows that people with disability to walk has higher chance of getting heart disease.
+```{r ,fig.width=6, fig.height=2, echo=FALSE, warning=FALSE, message=FALSE}
+cleaned_data |> ggplot(aes(y=DiffWalking, fill=HeartDisease))+geom_bar()+theme_classic()+geom_text(stat = 'count', aes(label = ..count..,hjust=0))
+```
+
+
+\newpage
+## Reference
+
